@@ -1,0 +1,896 @@
+import React, { useState } from 'react';
+import { Plus, Edit, Trash2, Clock, MapPin, Users, Video, ExternalLink, Calendar, TrendingUp, BookOpen, ClipboardList, AlertTriangle, Search } from 'lucide-react';
+import { supabase, callDealRoomAdmin, SB2_CLUB_SLUG } from '../../supabase';
+import { formatDate, formatTime } from '../../utils/formatters';
+import { Button, Card, Badge, Modal } from '../../components/ui';
+
+const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [creatingCalendarFor, setCreatingCalendarFor] = useState(null);
+  const [warningModal, setWarningModal] = useState({ open: false, session: null, url: null });
+  const [calendarCreatedLocal, setCalendarCreatedLocal] = useState({});
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [notesSession, setNotesSession] = useState(null);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesData, setNotesData] = useState({ attendees: [], participants: [], meeting_notes: '', member_notes: {} });
+  const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [formData, setFormData] = useState({
+    type: 'seminar',
+    title: '',
+    description: '',
+    date: '',
+    time: '10:00',
+    timezone: 'EST',
+    duration: 60,
+    zoom_link: '',
+    host_name: '',
+    host_title: '',
+    host_linkedin: '',
+    deal_id: null,
+  });
+  
+  // Check if meeting is in the past
+  const isPastMeeting = (date, time) => {
+    if (!date) return false;
+    const meetingDateTime = new Date(`${date}T${time || '00:00'}`);
+    return meetingDateTime < new Date();
+  };
+  
+  const createGoogleCalendarMeeting = async (session) => {
+    if (session.google_calendar_link || calendarCreatedLocal[session.id]) return;
+
+    setCreatingCalendarFor(session.id);
+    const startDate = new Date(`${session.date}T${session.time || '12:00'}:00`);
+    if (Number.isNaN(startDate.getTime())) {
+      alert('Meeting date/time is invalid. Please update the meeting first.');
+      setCreatingCalendarFor(null);
+      return;
+    }
+    const durationMinutes = Number.isFinite(session.duration) ? session.duration : 60;
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+
+    const formatGoogleDate = (date) =>
+      date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+    const { data: membersData, error } = await supabase
+      .from('members')
+      .select('email');
+
+    if (error) {
+      alert('Unable to fetch member emails for guests.');
+      setCreatingCalendarFor(null);
+      return;
+    }
+
+    const guestEmails = (membersData || [])
+      .map((m) => m.email?.trim())
+      .filter(Boolean);
+
+    const title = encodeURIComponent(session.title || 'Meeting');
+    const details = encodeURIComponent(
+      (session.description || '') + (session.zoom_link ? `\n\nJoin: ${session.zoom_link}` : '')
+    );
+    const location = encodeURIComponent(session.zoom_link || 'Online');
+    const dates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`;
+    const addGuests = encodeURIComponent(guestEmails.join(','));
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}&add=${addGuests}`;
+
+    // Keep the button in its pending state while the modal is up so it
+    // doesn't flicker back to the default label before the modal renders.
+    setWarningModal({ open: true, session, url });
+  };
+
+  const confirmCreateGoogleCalendar = async () => {
+    const { session, url } = warningModal;
+    if (!session || !url) return;
+
+    setWarningModal({ open: false, session: null, url: null });
+    window.open(url, '_blank', 'noopener,noreferrer');
+
+    const { error: updateError } = await supabase
+      .from('sessions')
+      .update({ google_calendar_link: url })
+      .eq('id', session.id);
+
+    if (updateError) {
+      alert('Unable to save calendar status for this meeting.');
+      setCreatingCalendarFor(null);
+      return;
+    }
+
+    setCalendarCreatedLocal((prev) => ({ ...prev, [session.id]: true }));
+    if (onRefresh) onRefresh();
+    setCreatingCalendarFor(null);
+  };
+
+  const cancelCreateGoogleCalendar = () => {
+    setWarningModal({ open: false, session: null, url: null });
+    setCreatingCalendarFor(null);
+  };
+
+  const handleCalendarReset = async (session) => {
+    if (!confirm('Re-set Google Calendar meeting status for this session?')) return;
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({ google_calendar_link: null })
+      .eq('id', session.id);
+
+    if (error) {
+      alert('Unable to re-set Google Calendar meeting status.');
+      return;
+    }
+
+    setCalendarCreatedLocal((prev) => {
+      const next = { ...prev };
+      delete next[session.id];
+      return next;
+    });
+    if (onRefresh) onRefresh();
+  };
+  
+  // Split sessions into upcoming and past
+  const upcomingSessions = sessions.filter(s => !isPastMeeting(s.date, s.time));
+  const pastSessions = sessions.filter(s => isPastMeeting(s.date, s.time));
+  
+  const openAddModal = () => {
+    setEditingSession(null);
+    setSaveSuccess(false);
+    setFormData({
+      type: 'seminar',
+      title: '',
+      description: '',
+      date: '',
+      time: '10:00',
+      timezone: 'EST',
+      duration: 60,
+      zoom_link: '',
+      host_name: '',
+      host_title: '',
+      host_linkedin: '',
+      deal_id: null,
+    });
+    setShowModal(true);
+  };
+  
+  const openEditModal = (session) => {
+    setEditingSession(session);
+    setSaveSuccess(false);
+    setFormData({
+      type: session.type || 'seminar',
+      title: session.title || '',
+      description: session.description || '',
+      date: session.date || '',
+      time: session.time || '10:00',
+      timezone: session.timezone || 'EST',
+      duration: session.duration || 60,
+      zoom_link: session.zoom_link || '',
+      host_name: session.host_name || '',
+      host_title: session.host_title || '',
+      host_linkedin: session.host_linkedin || '',
+      deal_id: session.deal_id || null,
+    });
+    setShowModal(true);
+  };
+  
+  const handleSave = async () => {
+    if (!formData.title.trim()) {
+      alert('Meeting title is required');
+      return;
+    }
+
+    setLoading(true);
+    setSaveSuccess(false);
+    try {
+      let savedSessionId;
+      if (editingSession) {
+        const { error } = await supabase
+          .from('sessions')
+          .update(formData)
+          .eq('id', editingSession.id);
+        if (error) throw error;
+        savedSessionId = editingSession.id;
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('sessions')
+          .insert([formData])
+          .select('id')
+          .single();
+        if (error) throw error;
+        savedSessionId = inserted?.id;
+      }
+
+      // Mirror meeting metadata to SB2 so cross-club views see every meeting,
+      // not just the ones notes have been recorded against. Omitting `members`
+      // means metadata-only — existing attendance (if any) stays untouched.
+      // Best-effort: SB2 sync failure shouldn't block the portal save.
+      if (savedSessionId) {
+        try {
+          await callDealRoomAdmin('pushMeetingToSb2', {
+            sourceSessionId: savedSessionId,
+            title: formData.title || null,
+            meetingType: formData.type || null,
+            hostName: formData.host_name || null,
+            scheduledAt: formData.date || null,
+          });
+        } catch (sb2Err) {
+          console.warn('SB2 meeting mirror failed (SB1 saved OK):', sb2Err);
+        }
+      }
+
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setShowModal(false);
+        onRefresh();
+      }, 1000);
+    } catch (err) {
+      console.error('Error saving meeting:', err);
+      alert('Error saving meeting: ' + err.message);
+    }
+    setLoading(false);
+  };
+  const handleDelete = async (session) => {
+    if (!confirm(`Are you sure you want to delete "${session.title}"? This cannot be undone.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .delete()
+        .eq('id', session.id);
+      if (error) throw error;
+
+      // Mirror the deletion on SB2 (cascades to meeting_attendance via FK).
+      // Best-effort.
+      try {
+        await callDealRoomAdmin('deleteMeetingFromSb2', { sourceSessionId: session.id });
+      } catch (sb2Err) {
+        console.warn('SB2 meeting delete failed:', sb2Err);
+      }
+
+      onRefresh();
+    } catch (err) {
+      console.error('Error deleting meeting:', err);
+      alert('Error deleting meeting');
+    }
+  };
+  const openNotesModal = (session) => {
+    setNotesSession(session);
+    setNotesData({
+      attendees: session.attendees || [],
+      participants: session.participants || [],
+      meeting_notes: session.meeting_notes || '',
+      member_notes: session.member_notes || {},
+    });
+    setAttendeeSearch('');
+    setParticipantSearch('');
+    setShowNotesModal(true);
+  };
+
+  // Helper: set/clear a per-member note. Empty string is normalized to undefined
+  // so the JSON doesn't accumulate empty keys.
+  const setMemberNote = (memberId, value) => {
+    setNotesData(prev => {
+      const next = { ...prev.member_notes };
+      if (value && value.trim()) next[memberId] = value;
+      else delete next[memberId];
+      return { ...prev, member_notes: next };
+    });
+  };
+
+  const toggleMemberInList = (list, memberId) => {
+    return list.includes(memberId)
+      ? list.filter(id => id !== memberId)
+      : [...list, memberId];
+  };
+
+  const handleSaveNotes = async () => {
+    if (!notesSession) return;
+    setNotesLoading(true);
+    try {
+      // 1) Persist locally on SB1 (source of truth for the portal).
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          attendees: notesData.attendees,
+          participants: notesData.participants,
+          meeting_notes: notesData.meeting_notes,
+          member_notes: notesData.member_notes || {},
+        })
+        .eq('id', notesSession.id);
+      if (error) throw error;
+
+      // 2) Mirror to SB2 so ClubManagementCW + cross-club views can read it.
+      // Build the union of (attended ∪ participated) and ship one row per member.
+      const involvedIds = new Set([...(notesData.attendees || []), ...(notesData.participants || [])]);
+      const sb2Members = [];
+      for (const memberId of involvedIds) {
+        const m = members.find(x => x.id === memberId);
+        if (!m?.email) continue;
+        sb2Members.push({
+          email: m.email,
+          fullName: m.full_name || '',
+          attended: notesData.attendees.includes(memberId),
+          participated: notesData.participants.includes(memberId),
+          memberNote: notesData.member_notes?.[memberId] || null,
+        });
+      }
+      try {
+        await callDealRoomAdmin('pushMeetingToSb2', {
+          clubSlug: SB2_CLUB_SLUG,
+          sourceSessionId: notesSession.id,
+          title: notesSession.title || null,
+          meetingType: notesSession.type || null,
+          hostName: notesSession.host_name || null,
+          scheduledAt: notesSession.date || null,
+          generalNotes: notesData.meeting_notes || null,
+          members: sb2Members,
+        });
+      } catch (sb2Err) {
+        // SB2 mirror is best-effort — don't block the portal save if it fails.
+        console.warn('SB2 mirror failed (SB1 saved OK):', sb2Err);
+      }
+
+      setShowNotesModal(false);
+      onRefresh();
+    } catch (err) {
+      console.error('Error saving meeting notes:', err);
+      alert('Error saving meeting notes: ' + err.message);
+    }
+    setNotesLoading(false);
+  };
+
+  const getMemberName = (memberId) => {
+    const member = members.find(m => m.id === memberId);
+    return member?.full_name || 'Unknown Member';
+  };
+
+  // Filter to club members only (exclude AV Team / managers) for meeting notes
+  const clubMembers = members.filter(m => !m.is_manager);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Meetings</h2>
+          <p className="text-sm text-gray-500">{upcomingSessions.length} upcoming, {pastSessions.length} past</p>
+        </div>
+        <Button icon={Plus} onClick={openAddModal}>Create Meeting</Button>
+      </div>
+      
+      {/* Upcoming Meetings */}
+      <div>
+        <h3 className="text-md font-semibold text-gray-900 mb-3">Upcoming Meetings</h3>
+        <Card padding={false}>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Meeting</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Date & Time</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Host</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase">Calendar</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {upcomingSessions.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No upcoming meetings</td>
+                  </tr>
+                ) : (
+                  upcomingSessions.map((session) => {
+                    return (
+                      <tr key={session.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="w-10 h-10 rounded-lg flex items-center justify-center"
+                              style={{ 
+                                backgroundColor: session.type === 'seminar' ? '#E8D59A' : '#D1FAE5',
+                                color: session.type === 'seminar' ? '#1B4D5C' : '#059669'
+                              }}
+                            >
+                              {session.type === 'seminar' ? <BookOpen size={18} /> : <TrendingUp size={18} />}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{session.title}</p>
+                              <p className="text-sm text-gray-500">{session.type === 'seminar' ? 'Seminar' : 'Live Deal'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {formatDate(session.date)}<br/>
+                          <span className="text-gray-400">{formatTime(session.time, session.timezone)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {session.host_name || '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant="success">Upcoming</Badge>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => createGoogleCalendarMeeting(session)}
+                              disabled={creatingCalendarFor === session.id || !!session.google_calendar_link || !!calendarCreatedLocal[session.id]}
+                              className={(session.google_calendar_link || calendarCreatedLocal[session.id]) ? 'opacity-50 cursor-not-allowed' : ''}
+                            >
+                              {creatingCalendarFor === session.id
+                                ? 'Creating...'
+                                : (session.google_calendar_link || calendarCreatedLocal[session.id])
+                                  ? 'Google Calendar Meeting Created'
+                                  : 'Create Google Calendar Meeting'}
+                            </Button>
+                            {(session.google_calendar_link || calendarCreatedLocal[session.id]) && (
+                              <button
+                                type="button"
+                                onClick={() => handleCalendarReset(session)}
+                                className="text-xs font-medium text-gray-500 hover:text-gray-700 underline"
+                              >
+                                Re-set
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => openEditModal(session)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+                            <Edit size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(session)} className="p-2 hover:bg-red-100 rounded-lg text-red-600">
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+
+      {/* Past Meetings */}
+      {pastSessions.length > 0 && (
+        <div>
+          <h3 className="text-md font-semibold text-gray-900 mb-3">Past Events</h3>
+          <Card padding={false}>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Meeting</th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Date & Time</th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Host</th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase">Notes</th>
+                    <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {pastSessions.map((session) => (
+                    <tr key={session.id} className="hover:bg-gray-50 opacity-75">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center"
+                            style={{
+                              backgroundColor: session.type === 'seminar' ? '#E8D59A' : '#D1FAE5',
+                              color: session.type === 'seminar' ? '#1B4D5C' : '#059669'
+                            }}
+                          >
+                            {session.type === 'seminar' ? <BookOpen size={18} /> : <TrendingUp size={18} />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{session.title}</p>
+                            <p className="text-sm text-gray-500">{session.type === 'seminar' ? 'Seminar' : 'Live Deal'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {formatDate(session.date)}<br/>
+                        <span className="text-gray-400">{formatTime(session.time, session.timezone)}</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {session.host_name || '-'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge>Completed</Badge>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => openNotesModal(session)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-700"
+                        >
+                          <ClipboardList size={14} />
+                          {(session.attendees?.length || session.participants?.length) ? 'View Notes' : 'Add Notes'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button onClick={() => openEditModal(session)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+                          <Edit size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(session)} className="p-2 hover:bg-red-100 rounded-lg text-red-600">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+      
+      {/* Add/Edit Modal */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingSession ? 'Edit Meeting' : 'Create Meeting'} size="lg">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Meeting Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, type: 'seminar' })}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                  formData.type === 'seminar' ? 'text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+                style={formData.type === 'seminar' ? { backgroundColor: 'var(--primary-color, #1B4D5C)' } : {}}
+              >
+                Seminar
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, type: 'deal' })}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                  formData.type === 'deal' ? 'text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+                style={formData.type === 'deal' ? { backgroundColor: 'var(--primary-color, #1B4D5C)' } : {}}
+              >
+                Live Deal
+              </button>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              placeholder="Venture 101: How VCs Think About Deals"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              rows={3}
+              placeholder="Meeting description..."
+            />
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+              <input
+                type="time"
+                value={formData.time}
+                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Duration (min)</label>
+              <input
+                type="number"
+                value={formData.duration}
+                onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Zoom Link</label>
+            <input
+              type="url"
+              value={formData.zoom_link}
+              onChange={(e) => setFormData({ ...formData, zoom_link: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              placeholder="https://zoom.us/j/..."
+            />
+          </div>
+
+          {formData.type === 'seminar' && (
+            <>
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-gray-900 mb-3">Guest Host</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Host Name</label>
+                    <input
+                      type="text"
+                      value={formData.host_name}
+                      onChange={(e) => setFormData({ ...formData, host_name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                      placeholder="Drew Johnson"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Host Title</label>
+                    <input
+                      type="text"
+                      value={formData.host_title}
+                      onChange={(e) => setFormData({ ...formData, host_title: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                      placeholder="Partner, Alumni Ventures"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Host LinkedIn</label>
+                  <input
+                    type="url"
+                    value={formData.host_linkedin}
+                    onChange={(e) => setFormData({ ...formData, host_linkedin: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+                    placeholder="https://linkedin.com/in/..."
+                  />
+                </div>
+              </div>
+            </>
+          )}
+          
+          {formData.type === 'deal' && deals.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Link to Deal</label>
+              <select
+                value={formData.deal_id || ''}
+                onChange={(e) => setFormData({ ...formData, deal_id: e.target.value || null })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              >
+                <option value="">Select a deal...</option>
+                {deals.map((deal) => (
+                  <option key={deal.id} value={deal.id}>{deal.company_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={loading || !formData.title || !formData.date}>
+              {loading ? 'Saving...' : (editingSession ? 'Update Meeting' : 'Create Meeting')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Meeting Notes Modal */}
+      <Modal isOpen={showNotesModal} onClose={() => setShowNotesModal(false)} title={`Meeting Notes: ${notesSession?.title || ''}`} size="lg">
+        <div className="space-y-6">
+          {/* Attended */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                <Users size={16} />
+                Members Who Attended
+                <span className="text-sm font-normal text-gray-500">({notesData.attendees.length} selected)</span>
+              </h4>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNotesData(prev => ({ ...prev, attendees: clubMembers.map(m => m.id) }))}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesData(prev => ({ ...prev, attendees: [] }))}
+                  className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={attendeeSearch}
+                onChange={(e) => setAttendeeSearch(e.target.value)}
+                placeholder="Search members…"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {clubMembers
+                .filter(m => !attendeeSearch || (m.full_name || '').toLowerCase().includes(attendeeSearch.toLowerCase()))
+                .map((member) => {
+                  const isChecked = notesData.attendees.includes(member.id);
+                  return (
+                    <div key={member.id} className="px-4 py-2.5 hover:bg-gray-50">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => setNotesData(prev => ({
+                            ...prev,
+                            attendees: toggleMemberInList(prev.attendees, member.id),
+                          }))}
+                          className="rounded"
+                          style={{ accentColor: '#1B4D5C' }}
+                        />
+                        <span className="text-sm text-gray-900">{member.full_name}</span>
+                        {member.member_company && (
+                          <span className="text-xs text-gray-400">{member.member_company}</span>
+                        )}
+                      </label>
+                      {isChecked && (
+                        <input
+                          type="text"
+                          value={notesData.member_notes?.[member.id] || ''}
+                          onChange={(e) => setMemberNote(member.id, e.target.value)}
+                          placeholder="Note about this member…"
+                          className="mt-1.5 ml-7 w-[calc(100%-1.75rem)] px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              {clubMembers.length === 0 && (
+                <p className="px-4 py-3 text-sm text-gray-500">No members found</p>
+              )}
+            </div>
+          </div>
+
+          {/* Participated / Spoke */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                <Users size={16} />
+                Members Who Actively Participated / Spoke
+                <span className="text-sm font-normal text-gray-500">({notesData.participants.length} selected)</span>
+              </h4>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNotesData(prev => ({ ...prev, participants: clubMembers.map(m => m.id) }))}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesData(prev => ({ ...prev, participants: [] }))}
+                  className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+                placeholder="Search members…"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+              {clubMembers
+                .filter(m => !participantSearch || (m.full_name || '').toLowerCase().includes(participantSearch.toLowerCase()))
+                .map((member) => {
+                  const isChecked = notesData.participants.includes(member.id);
+                  return (
+                    <div key={member.id} className="px-4 py-2.5 hover:bg-gray-50">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => setNotesData(prev => ({
+                            ...prev,
+                            participants: toggleMemberInList(prev.participants, member.id),
+                          }))}
+                          className="rounded"
+                          style={{ accentColor: '#059669' }}
+                        />
+                        <span className="text-sm text-gray-900">{member.full_name}</span>
+                        {member.member_company && (
+                          <span className="text-xs text-gray-400">{member.member_company}</span>
+                        )}
+                      </label>
+                      {isChecked && (
+                        <input
+                          type="text"
+                          value={notesData.member_notes?.[member.id] || ''}
+                          onChange={(e) => setMemberNote(member.id, e.target.value)}
+                          placeholder="Note about this member…"
+                          className="mt-1.5 ml-7 w-[calc(100%-1.75rem)] px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              {clubMembers.length === 0 && (
+                <p className="px-4 py-3 text-sm text-gray-500">No members found</p>
+              )}
+            </div>
+          </div>
+
+          {/* Free text notes */}
+          <div>
+            <h4 className="font-medium text-gray-900 mb-2">General Meeting Notes</h4>
+            <textarea
+              value={notesData.meeting_notes}
+              onChange={(e) => setNotesData(prev => ({ ...prev, meeting_notes: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2"
+              rows={4}
+              placeholder="Key takeaways, action items, general notes..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowNotesModal(false)}>Cancel</Button>
+            <Button onClick={handleSaveNotes} disabled={notesLoading}>
+              {notesLoading ? 'Saving...' : 'Save Notes'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={warningModal.open}
+        onClose={cancelCreateGoogleCalendar}
+        title="Before you continue"
+        size="md"
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 border-2 border-red-300">
+            <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-base text-gray-800 leading-relaxed">
+              <span className="font-bold text-red-700 uppercase tracking-wide">Warning:</span>{' '}
+              Un-check <span className="font-semibold">"Guests can see guest list"</span> before
+              saving the Google invite, or the RSVP list will be public.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" size="lg" onClick={cancelCreateGoogleCalendar}>Cancel</Button>
+            <Button variant="danger" size="lg" onClick={confirmCreateGoogleCalendar}>
+              I understand — open Google Calendar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+    </div>
+  );
+};
+
+
+export default AdminSessions;
