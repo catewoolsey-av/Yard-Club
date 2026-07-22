@@ -310,7 +310,7 @@ const MemberDeals = ({ deals: allDeals, currentUser }) => {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        const clubDisplayName = siteSettingsData?.club_name || "AI First Venture Club";
+        const clubDisplayName = siteSettingsData?.club_name || "Yard Venture Club";
 
         const interestTypeLabels = {
           'want_to_invest': 'wants to invest in',
