@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 
 export const CATE_EMAIL = 'cate.woolsey@av.vc';
+export const CLUBS_EMAIL = 'clubs@av.vc';
 
 /**
  * Check if email test mode is currently ON.
@@ -49,7 +50,7 @@ export async function getNotificationRecipients() {
   const testMode = settings?.email_test_mode !== false;
 
   if (testMode) {
-    return [CATE_EMAIL];
+    return [CLUBS_EMAIL];
   }
 
   const { data: members } = await supabase
@@ -62,7 +63,7 @@ export async function getNotificationRecipients() {
     .eq('is_active', true);
 
   const emails = new Set();
-  emails.add(CATE_EMAIL);
+  emails.add(CLUBS_EMAIL);
   (members || []).forEach(m => { if (m.email) emails.add(m.email.trim()); });
   (avTeam || []).forEach(t => { if (t.email) emails.add(t.email.trim()); });
 
@@ -77,7 +78,7 @@ export async function sendNotificationEmail({ to, recipients, subject, html, tex
     const response = await fetch('/.netlify/functions/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, recipients, subject, html, text }),
+      body: JSON.stringify({ to, recipients, subject, html, text, bcc: CATE_EMAIL }),
     });
 
     const result = await response.json();

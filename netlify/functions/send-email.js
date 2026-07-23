@@ -10,7 +10,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const { to, recipients, subject, text, html } = JSON.parse(event.body);
+    const { to, recipients, subject, text, html, bcc } = JSON.parse(event.body);
 
     // Validate inputs. Either `to` (single/direct send) or `recipients` (a
     // group send — one individual email per address) must be present.
@@ -65,7 +65,7 @@ exports.handler = async (event, context) => {
       for (let i = 0; i < recipientList.length; i += BATCH) {
         const batch = recipientList.slice(i, i + BATCH);
         const results = await Promise.allSettled(batch.map((addr) =>
-          transporter.sendMail({ from: fromAddr, to: addr, subject, text, html: html || text })
+          transporter.sendMail({ from: fromAddr, to: addr, bcc, subject, text, html: html || text })
         ));
         results.forEach((r, idx) => {
           if (r.status === 'fulfilled') sent++;
@@ -85,6 +85,7 @@ exports.handler = async (event, context) => {
     const info = await transporter.sendMail({
       from: fromAddr,
       to: toField,
+      bcc,
       subject: subject,
       text: text,
       html: html || text

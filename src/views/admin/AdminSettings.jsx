@@ -308,7 +308,7 @@ const AdminSettings = ({ siteSettings, onRefresh }) => {
               </div>
               <p className="text-sm text-gray-600 mb-4">
                 {formData.email_test_mode
-                  ? 'All notification emails (announcements, deals) are sent only to cate.woolsey@av.vc for testing. Meeting notifications are handled via Google Calendar invites.'
+                  ? 'All notification emails (announcements, deals) are sent only to clubs@av.vc for testing. Meeting notifications are handled via Google Calendar invites.'
                   : 'All notification emails (announcements, deals) are being sent to every club member and club leader. Meeting notifications are handled via Google Calendar invites.'}
               </p>
               {formData.email_test_mode ? (

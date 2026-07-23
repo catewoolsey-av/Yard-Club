@@ -3,7 +3,7 @@ import { Plus, Edit, Trash2, Bell, Mail, AlertCircle } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { formatDate } from '../../utils/formatters';
 import { Button, Card, Badge, Modal } from '../../components/ui';
-import { sendAnnouncementEmail, isEmailTestMode, CATE_EMAIL } from '../../utils/emailNotifications';
+import { sendAnnouncementEmail, isEmailTestMode, CLUBS_EMAIL } from '../../utils/emailNotifications';
 
 const AdminAnnouncements = ({ announcements, onRefresh, currentUser }) => {
   const [showModal, setShowModal] = useState(false);
@@ -241,8 +241,8 @@ const AdminAnnouncements = ({ announcements, onRefresh, currentUser }) => {
                 </p>
                 <p className={`text-sm mt-1 ${emailTestMode ? 'text-amber-700' : 'text-red-700'}`}>
                   {emailTestMode
-                    ? CATE_EMAIL
-                    : 'All club members, club leaders, and ' + CATE_EMAIL}
+                    ? CLUBS_EMAIL
+                    : 'All club members, club leaders, and ' + CLUBS_EMAIL}
                 </p>
               </div>
             </div>

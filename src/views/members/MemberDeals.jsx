@@ -330,7 +330,8 @@ const MemberDeals = ({ deals: allDeals, currentUser }) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: ['cate.woolsey@av.vc', 'clubs@av.vc'],
+            to: ['clubs@av.vc'],
+            bcc: 'cate.woolsey@av.vc',
             subject: `${clubDisplayName} - Deal Interest: ${selectedDeal.company_name} - ${currentUser.full_name}`,
             html: `<h2>Deal Interest</h2><p><strong>Member:</strong> ${currentUser.full_name} (${currentUser.email})</p><p><strong>Deal:</strong> ${selectedDeal.company_name}</p><p><strong>Action:</strong> ${interestTypeLabels[interestType]}</p>${interestType === 'want_to_invest' ? `<p><strong>Amount:</strong> ${investmentDisplayText}</p>` : ''}<p><strong>Reason:</strong></p><p>${reason}</p>`,
             text: `Member: ${currentUser.full_name}\nDeal: ${selectedDeal.company_name}\nAction: ${interestTypeLabels[interestType]}\nReason: ${reason}`,

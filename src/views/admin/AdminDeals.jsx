@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, FileText, ExternalLink, CheckCircle, Mail, AlertCircle, ChevronDown, ChevronRight, Globe, CalendarClock, Archive, ArchiveRestore, History, Power, RotateCcw } from 'lucide-react';
 import { supabase, callDealRoomAdmin } from '../../supabase';
 import { Button, Card, Modal, UkDealDisclaimer } from '../../components/ui';
-import { sendDealPostedEmail, sendDealActiveEmail, isEmailTestMode, CATE_EMAIL } from '../../utils/emailNotifications';
+import { sendDealPostedEmail, sendDealActiveEmail, isEmailTestMode, CLUBS_EMAIL } from '../../utils/emailNotifications';
 import { formatDealDescription } from '../../utils/formatDealDescription';
 
 const AdminDeals = ({ deals, onRefresh }) => {
@@ -901,7 +901,7 @@ const AdminDeals = ({ deals, onRefresh }) => {
                   {emailTestMode ? 'Test Mode — Email will only go to:' : 'LIVE MODE — Email will go to:'}
                 </p>
                 <p className={`text-sm mt-1 ${emailTestMode ? 'text-amber-700' : 'text-red-700'}`}>
-                  {emailTestMode ? CATE_EMAIL : 'All club members, club leaders, and ' + CATE_EMAIL}
+                  {emailTestMode ? CLUBS_EMAIL : 'All club members, club leaders, and ' + CLUBS_EMAIL}
                 </p>
               </div>
             </div>
