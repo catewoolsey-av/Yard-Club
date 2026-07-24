@@ -524,7 +524,15 @@ const AdminMembers = ({ members, avTeam, onRefresh }) => {
           // Continue even if auth deletion fails
         }
       }
-      
+
+      // members and av_team are separate tables — a staff member can have a
+      // row in both (login access + public bio). Deleting only the members
+      // row left a stale av_team row that kept showing up in the AV Team
+      // directory and in Google Calendar guest lists built from that table.
+      if (member.email) {
+        await supabase.from('av_team').delete().eq('email', member.email);
+      }
+
       onRefresh();
     } catch (err) {
       console.error('Error deleting member:', err);

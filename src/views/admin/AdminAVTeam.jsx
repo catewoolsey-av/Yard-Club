@@ -203,6 +203,40 @@ const AdminAVTeam = ({ avTeam, onRefresh }) => {
         .delete()
         .eq('id', member.id);
       if (error) throw error;
+
+      // av_team and members are separate tables — the same staff member can
+      // have a row in both (public bio + login access). Deleting only the
+      // av_team row left a stale members row that kept showing up as a
+      // Google Calendar guest and an email recipient after being "removed."
+      if (member.email) {
+        const { data: matchingMember } = await supabase
+          .from('members')
+          .select('id, auth_user_id')
+          .eq('email', member.email)
+          .maybeSingle();
+
+        if (matchingMember) {
+          await Promise.all([
+            supabase.from('session_rsvps').delete().eq('member_id', matchingMember.id),
+            supabase.from('deal_interests').delete().eq('member_id', matchingMember.id),
+            supabase.from('portfolio_investments').delete().eq('member_id', matchingMember.id),
+          ]);
+          await supabase.from('members').delete().eq('id', matchingMember.id);
+
+          if (matchingMember.auth_user_id) {
+            try {
+              await fetch('/api/delete-auth-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auth_user_id: matchingMember.auth_user_id })
+              });
+            } catch (authErr) {
+              console.error('Error deleting auth user:', authErr);
+            }
+          }
+        }
+      }
+
       onRefresh();
     } catch (err) {
       alert('Error: ' + err.message);
