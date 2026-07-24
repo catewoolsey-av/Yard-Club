@@ -55,12 +55,14 @@ export async function getNotificationRecipients() {
 
   const { data: members } = await supabase
     .from('members')
-    .select('email');
+    .select('email')
+    .eq('is_manager', false);
 
   const { data: avTeam } = await supabase
     .from('av_team')
     .select('email')
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .eq('is_visible_to_members', true);
 
   const emails = new Set();
   emails.add(CLUBS_EMAIL);
