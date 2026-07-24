@@ -58,7 +58,8 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
 
     const { data: membersData, error } = await supabase
       .from('members')
-      .select('email');
+      .select('email')
+      .eq('is_manager', false);
 
     if (error) {
       alert('Unable to fetch member emails for guests.');
@@ -66,7 +67,13 @@ const AdminSessions = ({ sessions, deals, members = [], onRefresh }) => {
       return;
     }
 
-    const guestEmails = (membersData || [])
+    const { data: avTeamData } = await supabase
+      .from('av_team')
+      .select('email')
+      .eq('is_active', true)
+      .eq('is_visible_to_members', true);
+
+    const guestEmails = [...(membersData || []), ...(avTeamData || [])]
       .map((m) => m.email?.trim())
       .filter(Boolean);
 
