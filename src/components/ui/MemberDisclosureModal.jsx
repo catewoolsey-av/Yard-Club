@@ -18,6 +18,16 @@ export const MemberDisclosureModal = ({ currentUser, siteSettings, avTeam, onAck
 
   if (!currentUser?.id) return null;
 
+  // AV staff aren't Club members and don't need the investment-advice /
+  // conflicts acknowledgement — skip for anyone with an @av.vc email or a
+  // matching row in the av_team table (covers non-@av.vc AV staff too).
+  const email = currentUser.email?.toLowerCase().trim();
+  const isAvTeamMember = !!email && (
+    email.endsWith('@av.vc') ||
+    (avTeam || []).some((av) => av.email?.toLowerCase().trim() === email)
+  );
+  if (isAvTeamMember) return null;
+
   const step = !currentUser.investment_advice_ack_at
     ? 1
     : !currentUser.conflicts_ack_at
