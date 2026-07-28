@@ -177,11 +177,12 @@ export default function App() {
           setLoggedInMember(member);
           setIsAdmin(false); // Ensure member mode
           memberRestored = true;
-          if (storedView && !storedView.startsWith('admin-')) {
-            setCurrentView(storedView);
-          } else {
-            setCurrentView('dashboard');
-          }
+          // Always land on the dashboard on a fresh restore (page load/reload
+          // with a remembered session), not wherever they last were (e.g.
+          // Deals) — storedView is still tracked/used for in-session
+          // navigation (back button, admin-view restore below), just not for
+          // where a member lands right after (re)establishing their session.
+          setCurrentView('dashboard');
           // All users start on member side, even if they have admin capabilities
         }
       }
