@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 import { formatDate, formatTime, getTimeUntil } from './utils/formatters';
 import { resolveAssetUrl } from './utils/assetUrls';
 import { resolveStorageUrl } from './utils/storageUrl';
-import { Button, Card, Badge, Modal, LoadingSpinner } from './components/ui';
+import { Button, Card, Badge, Modal, LoadingSpinner, MemberDisclosureModal } from './components/ui';
 import { Sidebar, Header } from './components/layout';
 import { AdminLogin, MemberLogin } from './components/auth';
 import {
@@ -780,6 +780,15 @@ export default function App() {
           </p>
         </footer>
       </main>
+
+      {!isAdmin && loggedInMember && (
+        <MemberDisclosureModal
+          currentUser={currentUser}
+          siteSettings={siteSettings}
+          avTeam={avTeam}
+          onAcknowledged={(fields) => setLoggedInMember((prev) => (prev ? { ...prev, ...fields } : prev))}
+        />
+      )}
 
       {showLinkedinPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
