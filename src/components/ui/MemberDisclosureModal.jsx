@@ -40,11 +40,6 @@ export const MemberDisclosureModal = ({ currentUser, siteSettings, avTeam, onAck
   const clubSubtitle = siteSettings?.club_subtitle || 'Venture Club';
   const clubDisplayName = `${clubName} ${clubSubtitle}`;
 
-  const president = (avTeam || []).find((m) => m.club_role === 'Club President');
-  const presidentLabel = president?.full_name
-    ? `${president.full_name} ("Club President")`
-    : 'The Club President';
-
   const accountName = currentUser.full_name || '';
 
   const submitStep1 = async () => {
@@ -139,7 +134,7 @@ export const MemberDisclosureModal = ({ currentUser, siteSettings, avTeam, onAck
           {step === 2 && (
             <>
               <p className="text-sm text-gray-700 leading-relaxed">
-                {presidentLabel} and any other Alumni Ventures personnel that may attend Club
+                The Club President and any other Alumni Ventures personnel that may attend Club
                 meetings have certain conflicts of interest with respect to any investment
                 opportunity discussed during the meeting. They are eligible to receive
                 compensation for their work with the Club. In general, this compensation will
