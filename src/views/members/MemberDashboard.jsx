@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, TrendingUp, Bell, ChevronRight, Users, Clock, DollarSign, ExternalLink } from 'lucide-react';
-import { formatDate, formatTime, getTimeUntil } from '../../utils/formatters';
+import { formatDate, formatTime, getTimeUntil, parseDateValue } from '../../utils/formatters';
 import { Button, Card, Badge, Avatar, Modal } from '../../components/ui';
 import { callDealRoomMember } from '../../supabase';
 import { resolveStorageUrl } from '../../utils/storageUrl';
@@ -9,17 +9,23 @@ const MemberDashboard = ({ members, sessions, deals: allDeals, announcements, av
   // Deals archived on the admin side shouldn't surface on the member dashboard either.
   const deals = allDeals.filter(d => !d.archived_at);
 
-  // Filter and sort upcoming sessions by date, get the most upcoming one
+  // Filter and sort upcoming sessions by date, get the most upcoming one.
+  // s.date is a plain "YYYY-MM-DD" string — new Date(s.date) alone parses it
+  // as UTC midnight, which falls on the *previous* calendar day once
+  // rendered in any timezone behind UTC (all of North America), so a
+  // same-day meeting was being treated as "already past." parseDateValue
+  // (already used by AdminDashboard.jsx for this exact reason) builds the
+  // Date from local year/month/day instead, avoiding the UTC round-trip.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const upcomingSessions = sessions
     .filter(s => {
-      if (!s.date) return false;
-      const sessionDate = new Date(s.date);
+      const sessionDate = parseDateValue(s.date);
+      if (!sessionDate || Number.isNaN(sessionDate.getTime())) return false;
       sessionDate.setHours(0, 0, 0, 0);
       return sessionDate >= today;
     })
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .sort((a, b) => parseDateValue(a.date) - parseDateValue(b.date))
     .slice(0, 1);
   
   // Select featured deal in priority order: pending > active > closed > passed.
