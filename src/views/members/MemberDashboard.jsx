@@ -333,7 +333,7 @@ const MemberDashboard = ({ members, sessions, deals: allDeals, announcements, av
               
               {(featuredDeal.deal_deadline || featuredDeal.voting_deadline) && (
                 <p className="text-xs text-amber-600 mb-4 font-medium">
-                  Deadline: {new Date(featuredDeal.deal_deadline || featuredDeal.voting_deadline).toLocaleDateString()}
+                  Deadline: {parseDateValue(featuredDeal.deal_deadline || featuredDeal.voting_deadline).toLocaleDateString()}
                 </p>
               )}
               
