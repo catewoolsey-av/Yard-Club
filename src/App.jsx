@@ -267,7 +267,11 @@ export default function App() {
     if (!silent) setLoading(false);
   };
   
-  // LinkedIn connect prompt — show once after login for members without LinkedIn
+  // LinkedIn connect prompt — show once after login for members without LinkedIn.
+  // Skip/dismiss decisions are persisted to members.linkedin_prompt_skipped_at /
+  // linkedin_prompt_dismissed_at (see migration 015) rather than localStorage,
+  // so a member who skips on one device/browser doesn't see it pop up again on
+  // another — the same reasoning as the disclosure acknowledgements.
   const [showLinkedinPrompt, setShowLinkedinPrompt] = useState(false);
 
   useEffect(() => {
@@ -276,34 +280,40 @@ export default function App() {
     if (currentView !== 'dashboard') return;
     if (linkedinStatus) return;
 
-    try {
-      const permaDismissed = localStorage.getItem('ngvc_linkedin_prompt_never');
-      if (permaDismissed) return;
+    if (loggedInMember.linkedin_prompt_dismissed_at) return;
 
-      const skipped = localStorage.getItem('ngvc_linkedin_prompt_skipped');
-      if (skipped) {
-        const skippedAt = parseInt(skipped, 10);
-        const sevenDays = 7 * 24 * 60 * 60 * 1000;
-        if (Date.now() - skippedAt < sevenDays) return;
-      }
-    } catch {}
+    if (loggedInMember.linkedin_prompt_skipped_at) {
+      const skippedAt = new Date(loggedInMember.linkedin_prompt_skipped_at).getTime();
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - skippedAt < sevenDays) return;
+    }
 
     const timer = setTimeout(() => setShowLinkedinPrompt(true), 2000);
     return () => clearTimeout(timer);
   }, [loggedInMember, currentView]);
 
-  const skipLinkedinPrompt = () => {
+  const skipLinkedinPrompt = async () => {
     setShowLinkedinPrompt(false);
+    const skippedAt = new Date().toISOString();
+    setLoggedInMember((prev) => (prev ? { ...prev, linkedin_prompt_skipped_at: skippedAt } : prev));
     try {
-      localStorage.setItem('ngvc_linkedin_prompt_skipped', String(Date.now()));
-    } catch {}
+      const { error } = await supabase.from('members').update({ linkedin_prompt_skipped_at: skippedAt }).eq('id', loggedInMember.id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Failed to record LinkedIn prompt skip:', err);
+    }
   };
 
-  const dismissLinkedinPromptForever = () => {
+  const dismissLinkedinPromptForever = async () => {
     setShowLinkedinPrompt(false);
+    const dismissedAt = new Date().toISOString();
+    setLoggedInMember((prev) => (prev ? { ...prev, linkedin_prompt_dismissed_at: dismissedAt } : prev));
     try {
-      localStorage.setItem('ngvc_linkedin_prompt_never', 'true');
-    } catch {}
+      const { error } = await supabase.from('members').update({ linkedin_prompt_dismissed_at: dismissedAt }).eq('id', loggedInMember.id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Failed to record LinkedIn prompt permanent dismissal:', err);
+    }
   };
 
   // Handle LinkedIn OAuth redirect
@@ -321,7 +331,7 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname);
       if (linkedinParam === 'connected') {
         fetchData({ silent: true });
-        setCurrentView('profile');
+        setCurrentView('dashboard');
         setShowLinkedinPrompt(false);
       }
       if (linkedinParam === 'connected') {
