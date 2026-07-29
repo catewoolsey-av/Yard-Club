@@ -201,19 +201,23 @@ export default function App() {
         // ngvc_admin_remember is only ever set by the standalone admin
         // password screen (handleAdminLogin) — its presence means this admin
         // session isn't tied to any member account, so its own "remember this
-        // device" choice is authoritative. Otherwise this admin session came
-        // from a manager toggling in from their own member login, so it
-        // should only survive a reload alongside that member session —
-        // restoring it alone would leave the sidebar with a currentUser-less
-        // admin mode (no profile card, no toggle, just Logout).
+        // device" choice is authoritative, and it lands on the admin home
+        // dashboard on restore (not whatever sub-page it last was on),
+        // mirroring the member dashboard-landing rule above.
+        //
+        // A manager who toggled into admin mode from their own member login
+        // never auto-restores into admin on a fresh load/reload — switching
+        // modes is a deliberate in-session action, not part of "logging back
+        // in." They land on their member dashboard like any other member and
+        // can re-enter admin mode via the toggle if they want it.
         let adminRememberRaw = null;
         try { adminRememberRaw = localStorage.getItem('ngvc_admin_remember'); } catch {}
         const isPasswordAdminSession = adminRememberRaw !== null;
-        const shouldRestoreAdmin = isPasswordAdminSession ? adminRememberRaw !== 'false' : memberRestored;
+        const shouldRestoreAdmin = isPasswordAdminSession && adminRememberRaw !== 'false';
 
         if (shouldRestoreAdmin) {
           setIsAdmin(true);
-          setCurrentView(storedView);
+          setCurrentView('admin-dashboard');
         } else {
           try { localStorage.setItem('ngvc_is_admin', 'false'); } catch {}
         }
