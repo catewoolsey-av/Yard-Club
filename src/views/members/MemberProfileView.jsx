@@ -54,7 +54,7 @@ const MemberProfileView = ({ member, currentUser, isOwnProfile, onBack, backLabe
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-gray-900">{member.full_name}</h1>
             {(member.is_manager || member.club_role) ? (
-              (member.title || member.member_role || member.club_role) && <p className="text-gray-600 text-lg mt-1">{member.title || member.member_role || member.club_role}</p>
+              (member.club_role || member.title || member.member_role) && <p className="text-gray-600 text-lg mt-1">{member.club_role || member.title || member.member_role}</p>
             ) : (
               member.headline && <p className="text-gray-600 text-lg mt-1">{member.headline}</p>
             )}

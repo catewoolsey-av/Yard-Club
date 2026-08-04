@@ -7,9 +7,12 @@ const MemberCommunity = ({ members, avTeam, onViewMember }) => {
   const cohortMembers = members.filter(m => !m.is_manager).sort((a, b) => 
     (a.full_name || '').localeCompare(b.full_name || '')
   );
-  const sortedAVTeam = [...avTeam].sort((a, b) => 
-    (a.full_name || '').localeCompare(b.full_name || '')
-  );
+  const sortedAVTeam = [...avTeam].sort((a, b) => {
+    const aPres = a.club_role === 'Club President' ? 0 : 1;
+    const bPres = b.club_role === 'Club President' ? 0 : 1;
+    if (aPres !== bPres) return aPres - bPres;
+    return (a.full_name || '').localeCompare(b.full_name || '');
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAVMember, setSelectedAVMember] = useState(null);
   

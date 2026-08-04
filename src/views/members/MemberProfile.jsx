@@ -278,8 +278,8 @@ const MemberProfile = ({ currentUser, isAdmin = false, onRefresh, onUserUpdate }
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{currentUser.full_name}</h2>
-              {currentUser.is_manager ? (
-                (currentUser.title || currentUser.member_role || currentUser.role_title || currentUser.club_role) && <p className="text-gray-600 mt-1">{currentUser.title || currentUser.member_role || currentUser.role_title || currentUser.club_role}</p>
+              {(currentUser.is_manager || currentUser.club_role) ? (
+                (currentUser.club_role || currentUser.title || currentUser.member_role || currentUser.role_title) && <p className="text-gray-600 mt-1">{currentUser.club_role || currentUser.title || currentUser.member_role || currentUser.role_title}</p>
               ) : (
                 currentUser.headline && <p className="text-gray-600 mt-1">{currentUser.headline}</p>
               )}
