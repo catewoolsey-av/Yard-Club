@@ -257,13 +257,20 @@ const AdminDeals = ({ deals, onRefresh }) => {
     if (deal) openDeadlineModal(deal);
   };
 
-  // Archive/restore only toggle deals.archived_at — a pure admin-side visibility
+  // Archive/restore toggle deals.archived_at — a pure admin-side visibility
   // flag. Nothing about the deal's data, member interests, or investments
   // changes; archived deals stay fully intact and unaffected on the member side.
+  // Also mirrors the flag onto this club's deal_shares row in HQ (best-effort —
+  // a failure here doesn't block or revert the local archive/restore).
   const archiveDeal = async (deal) => {
     try {
       const { error } = await supabase.from('deals').update({ archived_at: new Date().toISOString() }).eq('id', deal.id);
       if (error) throw error;
+      if (deal.source_deal_id) {
+        callDealRoomAdmin('setDealShareArchived', { sourceDealId: deal.source_deal_id, archived: true }).catch((err) =>
+          console.error('Failed to sync archive to HQ:', err)
+        );
+      }
       onRefresh();
     } catch (err) {
       alert('Error archiving deal: ' + err.message);
@@ -274,6 +281,11 @@ const AdminDeals = ({ deals, onRefresh }) => {
     try {
       const { error } = await supabase.from('deals').update({ archived_at: null }).eq('id', deal.id);
       if (error) throw error;
+      if (deal.source_deal_id) {
+        callDealRoomAdmin('setDealShareArchived', { sourceDealId: deal.source_deal_id, archived: false }).catch((err) =>
+          console.error('Failed to sync restore to HQ:', err)
+        );
+      }
       onRefresh();
     } catch (err) {
       alert('Error restoring deal: ' + err.message);

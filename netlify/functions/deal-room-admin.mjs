@@ -422,6 +422,24 @@ export default async (req) => {
       return json(200, { success: true, id: inserted.id, created: true });
     }
 
+    if (action === 'setDealShareArchived') {
+      // Mirrors this club's local deals.archived_at onto its deal_shares row
+      // so HQ (ClubManagementCW) can see the deal was archived from this
+      // specific club's portal, without affecting any other club sharing
+      // the same underlying deal.
+      const { sourceDealId, archived } = body;
+      if (!sourceDealId) return json(400, { error: 'Missing sourceDealId' });
+      if (!clubId) return json(400, { error: 'Missing or invalid clubSlug' });
+      const { error } = await sb2
+        .from('deal_shares')
+        .update({ archived_at: archived ? new Date().toISOString() : null })
+        .eq('target_type', 'club')
+        .eq('target_id', clubId)
+        .eq('deal_id', sourceDealId);
+      if (error) throw error;
+      return json(200, { success: true });
+    }
+
     if (action === 'unregisterDealShare') {
       // Mirror of removeDeal — wipes the SB2 deal_share row for this (club,
       // deal). Quiet no-op if the row wasn't there.
