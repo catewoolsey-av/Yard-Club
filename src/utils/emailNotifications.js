@@ -73,6 +73,25 @@ export async function getNotificationRecipients() {
 }
 
 /**
+ * Fetch the club's visible Club President, Investment Chair, and Membership
+ * Manager email addresses — used to route deal-interest notifications to
+ * whoever is actually running the club instead of hardcoded staff names.
+ * A role with no visible AV team member assigned is silently skipped.
+ */
+export async function getDealInterestRecipients() {
+  const { data: avTeam } = await supabase
+    .from('av_team')
+    .select('email, club_role')
+    .eq('is_active', true)
+    .eq('is_visible_to_members', true)
+    .in('club_role', ['Club President', 'Investment Chair', 'Membership Manager']);
+
+  const emails = new Set([CLUBS_EMAIL]);
+  (avTeam || []).forEach(t => { if (t.email) emails.add(t.email.trim()); });
+  return [...emails];
+}
+
+/**
  * Send an email notification via the Netlify function.
  */
 export async function sendNotificationEmail({ to, recipients, subject, html, text }) {

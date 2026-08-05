@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import { TrendingUp, FileText, AlertCircle, Eye, Link2, Check } from 'lucide-react';
 import { supabase, callDealRoomMember } from '../../supabase';
 import { formatDate } from '../../utils/formatters';
+import { getDealInterestRecipients } from '../../utils/emailNotifications';
 import { formatDealDescription } from '../../utils/formatDealDescription';
 import { Button, Card, Badge, Modal, DocumentModal, VideoModal, UkDealDisclaimer } from '../../components/ui';
 
@@ -326,11 +327,13 @@ const MemberDeals = ({ deals: allDeals, currentUser }) => {
           }
         }
 
+        const recipients = await getDealInterestRecipients();
+
         await fetch('/.netlify/functions/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: ['clubs@av.vc'],
+            to: recipients,
             bcc: 'cate.woolsey@av.vc',
             subject: `${clubDisplayName} - Deal Interest: ${selectedDeal.company_name} - ${currentUser.full_name}`,
             html: `<h2>Deal Interest</h2><p><strong>Member:</strong> ${currentUser.full_name} (${currentUser.email})</p><p><strong>Deal:</strong> ${selectedDeal.company_name}</p><p><strong>Action:</strong> ${interestTypeLabels[interestType]}</p>${interestType === 'want_to_invest' ? `<p><strong>Amount:</strong> ${investmentDisplayText}</p>` : ''}<p><strong>Reason:</strong></p><p>${reason}</p>`,

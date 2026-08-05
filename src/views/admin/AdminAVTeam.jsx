@@ -14,7 +14,7 @@ const AdminAVTeam = ({ avTeam, onRefresh }) => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef(null);
   
-  const clubRoleOptions = ['Club President', 'Membership Manager', 'Mentor', 'Contributor'];
+  const clubRoleOptions = ['Club President', 'Investment Chair', 'Membership Manager', 'Mentor', 'Contributor'];
   const emojiOptions = ['initials', '👨‍💼', '👩‍💼', '👨‍💻', '👩‍💻', '🤖', '💼', '🐱', '🐶'];
   
   // Sort and filter AV team
